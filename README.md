@@ -35,5 +35,20 @@ print x;
 * block statement: `{ <...statements> }`
 * set expression: `<name> = <expression>`
 
+# Bytecode:
+| Name | Description |
+|---|---|
+| get N | pushes value of variable with id N |
+| set N | pops a value and sets variable with id N |
+| nop | ... |
+|add, sub, mul, div, and_, eql, or_, lt, gt, le, ge | Math `push(pop() X pop())` |
+| num N | pushes number N onto the stack |
+| debug | pops a value and prints it.  (temp. will be removed after functions) |
+| dup   | `push(top())` |
+| neg   | `push(!pop())` |
+| jpa N | set current instruction index to N |
+| jmp N | if popped value is not 0 then set current instruction index to N |
+```
+
 # Code:
 Pasta
