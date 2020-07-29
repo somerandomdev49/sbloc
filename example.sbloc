@@ -1,0 +1,7 @@
+print 11;
+if 21 == 21
+{
+	print 1;
+	print 2;
+}
+print 0;
