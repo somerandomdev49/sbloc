@@ -5,7 +5,7 @@
     // +--------------------------------------------------+ //
    //                                                      //
   // +--------------------------------------------------+ //
- // /       Written in approx. 21 hours (3d x 7h)      / //
+ // /          Written in < 24 hours (4d x ~6h)        / //
 // +--------------------------------------------------+ //
 #include <vector>
 #include <string>
@@ -210,9 +210,9 @@ auto tokenize(std::istream &input) -> container<token>
 enum class instruction_type
 {
 	get, set, nop,
-	add, sub, mul, div, and_, xor_,
+	add, sub, mul, div, and_, xor_, jpa,
 	or_, lt, gt, le, ge, bin_and, bin_or, mod,
-	pop, create, num, debug, jmp, neg, eql
+	pop, create, num, debug, jmp, neg, eql, dup
 };
 
 std::ostream &operator<<(std::ostream &os, const instruction_type &i)
@@ -243,7 +243,9 @@ std::ostream &operator<<(std::ostream &os, const instruction_type &i)
 		case instruction_type::mod     : s = "mod    "; break;
 		case instruction_type::neg     : s = "neg    "; break;
 		case instruction_type::jmp     : s = "jmp    "; break;
+		case instruction_type::jpa     : s = "jpa    "; break;
 		case instruction_type::eql     : s = "eql    "; break;
+		case instruction_type::dup     : s = "dup    "; break;
 	}
 	os << s;
 	return os;
@@ -270,7 +272,11 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 		{ token_type::sub, std::make_pair(1, false) },
 		{ token_type::mul, std::make_pair(2, false) },
 		{ token_type::div, std::make_pair(2, false) },
-		{ token_type::is_eql, std::make_pair(3, false) },
+		{ token_type::lt, std::make_pair(3, false) },
+		{ token_type::gt, std::make_pair(3, false) },
+		{ token_type::le, std::make_pair(4, false) },
+		{ token_type::ge, std::make_pair(4, false) },
+		{ token_type::is_eql, std::make_pair(5, false) },
 	};
 	
 	auto is_operator = [&](token_type type) -> bool
@@ -389,14 +395,40 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 					debug3("if");
 					next();
 					parse(expression_type::expr, 0);
-					debug3("expr - check");
+					code.push_back(make_instruction(instruction_type::dup));
+					
 					code.push_back(make_instruction(instruction_type::neg));
+
 					int jmp_index = code.size();
 					code.push_back(make_instruction(instruction_type::nop));
+
 					parse(expression_type::stmt, 0);
-					debug3("stmt - check");
+					
 					code[jmp_index] = make_instruction_arg(instruction_type::jmp, code.size());
+
+					if(current.first == token_type::var && current.second == "else")
+					{
+						int jmp_index_else = code.size();
+						code.push_back(make_instruction(instruction_type::nop));
+						next();
+						parse(expression_type::stmt, 0);
+						code[jmp_index_else] = make_instruction_arg(instruction_type::jmp, code.size());
+					}
 					break; // skip semicolon check.
+				}
+				else if(current.first == token_type::var && current.second == "while")
+				{
+					next();
+					int jmp_cond = code.size(); // no empty conditions.
+					parse(expression_type::expr, 0);
+					code.push_back(make_instruction(instruction_type::neg));
+					int jmp_exit_loc = code.size();
+					code.push_back(make_instruction(instruction_type::nop));
+					parse(expression_type::stmt, 0);
+
+					code.push_back(make_instruction_arg(instruction_type::jpa, jmp_cond));
+					code[jmp_exit_loc] = (make_instruction_arg(instruction_type::jmp, code.size()));
+					break;
 				}
 				else
 				{
@@ -477,16 +509,9 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 		group_end();
 		debug("end parse");
 	};
-
-	try
-	{
 		while(index < input.size() && input[index].first != token_type::eof)
 		parse(expression_type::stmt, 0);
-	}
-	catch(const std::runtime_error& e)
-	{
-		std::cerr << "[ERROR]: " << e.what() << std::endl;
-	}
+	
 	
 	//debug1("End");
 	for(const auto &x : code)
@@ -516,6 +541,16 @@ public:
 	object(std::monostate n) : type(object_type::nil), marked(false), value(n) {}
 };
 
+#define op(name, type, op) case instruction_type::name: \
+						   {\
+						   	   auto rhs = pop();\
+						   	   auto lhs = pop();\
+						   	   assert_type(lhs, object_type::type);\
+						   	   assert_type(rhs, object_type::type);\
+						   	   stack.push_back(object(std::get<0>(lhs.value) op std::get<0>(rhs.value)));\
+						   	   break;\
+						   }
+
 auto eval(std::pair<container<int>, container<instruction>> &input) -> container<object>
 {
 	//debug1("eval")
@@ -537,7 +572,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 		switch(o.type)
 		{
 			case object_type::nil: return "nil";
-			case object_type::num: return std::to_string(std::get<float>(o.value));
+			case object_type::num: return std::to_string((int)std::get<float>(o.value));
 			case object_type::str: return std::get<std::string>(o.value);
 			case object_type::arr:
 			{
@@ -573,51 +608,17 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 		if(debug_mode) std::cout << "[running]: " << ins.first << std::endl;
 		switch(ins.first)
 		{
-			case instruction_type::add: 
-			{
-				auto rhs = pop();
-				auto lhs = pop();
-				assert_type(lhs, object_type::num);
-				assert_type(rhs, object_type::num);
-				stack.push_back(object(std::get<0>(lhs.value) + std::get<0>(rhs.value)));
-				break;
-			}
-			case instruction_type::sub: 
-			{
-				auto rhs = pop();
-				auto lhs = pop();
-				assert_type(lhs, object_type::num);
-				assert_type(rhs, object_type::num);
-				stack.push_back(object(std::get<0>(lhs.value) - std::get<0>(rhs.value)));
-				break;
-			}
-			case instruction_type::mul: 
-			{
-				auto rhs = pop();
-				auto lhs = pop();
-				assert_type(lhs, object_type::num);
-				assert_type(rhs, object_type::num);
-				stack.push_back(object(std::get<0>(lhs.value) * std::get<0>(rhs.value)));
-				break;
-			}
-			case instruction_type::div: 
-			{
-				auto rhs = pop();
-				auto lhs = pop();
-				assert_type(lhs, object_type::num);
-				assert_type(rhs, object_type::num);
-				stack.push_back(object(std::get<0>(lhs.value) / std::get<0>(rhs.value)));
-				break;
-			}
-			case instruction_type::eql: 
-			{
-				auto rhs = pop();
-				auto lhs = pop();
-				assert_type(lhs, object_type::num);
-				assert_type(rhs, object_type::num);
-				stack.push_back(object(std::get<0>(lhs.value) == std::get<0>(rhs.value)));
-				break;
-			}
+			op(add  , num, +  );
+			op(sub  , num, -  );
+			op(mul  , num, *  );
+			op(div  , num, /  );
+			op(eql  , num, == );
+			op(gt   , num, >  );
+			op(lt   , num, <  );
+			op(ge   , num, >= );
+			op(le   , num, <= );
+			op(or_  , num, || );
+			op(and_ , num, && );
 			case instruction_type::neg: 
 			{
 				auto x = pop();
@@ -632,6 +633,16 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 					index = (int)std::get<float>(ins.second);
 					goto nextLoop;
 				}
+				break;
+			}
+			case instruction_type::jpa: 
+			{
+				index = (int)std::get<float>(ins.second);
+				goto nextLoop;
+			}
+			case instruction_type::dup:
+			{
+				stack.push_back(stack[stack.size()-1]);
 				break;
 			}
 			case instruction_type::num:
@@ -688,7 +699,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 				{
 					std::cout << to_string(x) << std::endl;
 				}
-				std::cout << "[=========]" << std::endl;
+				std::cout << "[============]" << std::endl;
 				std::cin >> c;
 			}
 			if(c == 'v')
@@ -706,7 +717,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 int main(int argc, char *argv[])
 {
 	if(argc < 2) { std::cout << "No input files" << std::endl; return 1; }
-	//debug_mode = std::find(argv, argv + argc, "-d");
+	debug_mode = false; // std::find(argv, argv + argc, "-d");
 	std::ifstream inp(argv[1]);
 	std::chrono::high_resolution_clock::time_point tokTimeStart = std::chrono::high_resolution_clock::now();
 	auto toks = tokenize(inp);
@@ -716,30 +727,36 @@ int main(int argc, char *argv[])
 	// 	std::cout << "Token: " << (int)tok.first << " : " << tok.second << std::endl;
 	// }
 	std::chrono::high_resolution_clock::time_point prsTimeStart = std::chrono::high_resolution_clock::now();
-	auto code = parse(toks);
-	std::chrono::high_resolution_clock::time_point prsTimeEnd = std::chrono::high_resolution_clock::now();
-	//  for(const auto &ins : code.second)
-	// {
-	// 	std::cout << "Instruction: " << ins.first;
-	// 	if(std::holds_alternative<std::monostate>(ins.second)) // int
-	// 		std::cout << " ;" << std::endl;
-	// 	else
-	// 		std::cout << " : " << std::get<0>(ins.second) << std::endl;
-	// }
-	std::chrono::high_resolution_clock::time_point runTimeStart = std::chrono::high_resolution_clock::now();
-	auto s = eval(code);
-	std::chrono::high_resolution_clock::time_point runTimeEnd = std::chrono::high_resolution_clock::now();
+	try {
+		auto code = parse(toks);
+		std::chrono::high_resolution_clock::time_point prsTimeEnd = std::chrono::high_resolution_clock::now();
+		// for(const auto &ins : code.second)
+		// {
+		// 	std::cout << "Instruction: " << ins.first;
+		// 	if(std::holds_alternative<std::monostate>(ins.second)) // int
+		// 		std::cout << " ;" << std::endl;
+		// 	else
+		// 		std::cout << " : " << std::get<0>(ins.second) << std::endl;
+		// }
+		std::chrono::high_resolution_clock::time_point runTimeStart = std::chrono::high_resolution_clock::now();
+		auto s = eval(code);
+		std::chrono::high_resolution_clock::time_point runTimeEnd = std::chrono::high_resolution_clock::now();
 
-	std::chrono::duration<double> tokTime = std::chrono::duration_cast<std::chrono::duration<double>>(tokTimeEnd - tokTimeStart);
-	std::chrono::duration<double> prsTime = std::chrono::duration_cast<std::chrono::duration<double>>(prsTimeEnd - prsTimeStart);
-	std::chrono::duration<double> runTime = std::chrono::duration_cast<std::chrono::duration<double>>(runTimeEnd - runTimeStart);
-	std::chrono::duration<double> allTime = std::chrono::duration_cast<std::chrono::duration<double>>(tokTimeEnd - runTimeStart);
-	std::cout << std::endl << "[Finished in " << tokTime.count() << "s]" << std::endl;
-	std::cout << "======================" << std::endl;
-	std::cout << "Tokenizer: " << tokTime.count() << std::endl;
-	std::cout << "Token count: " << toks.size() << std::endl;
-	std::cout << "Parser: " << prsTime.count() << std::endl;
-	std::cout << "Instruction count: " << code.second.size() << std::endl;
-	std::cout << "Eval: " << runTime.count() << std::endl;
+		std::chrono::duration<double> tokTime = std::chrono::duration_cast<std::chrono::duration<double>>(tokTimeEnd - tokTimeStart);
+		std::chrono::duration<double> prsTime = std::chrono::duration_cast<std::chrono::duration<double>>(prsTimeEnd - prsTimeStart);
+		std::chrono::duration<double> runTime = std::chrono::duration_cast<std::chrono::duration<double>>(runTimeEnd - runTimeStart);
+		std::chrono::duration<double> allTime = std::chrono::duration_cast<std::chrono::duration<double>>(tokTimeEnd - runTimeStart);
+		std::cout << std::endl << "[Finished in " << tokTime.count() << "s]" << std::endl;
+		std::cout << "======================" << std::endl;
+		std::cout << "Tokenizer: " << tokTime.count() << std::endl;
+		std::cout << "Token count: " << toks.size() << std::endl;
+		std::cout << "Parser: " << prsTime.count() << std::endl;
+		std::cout << "Instruction count: " << code.second.size() << std::endl;
+		std::cout << "Eval: " << runTime.count() << std::endl;
+	}
+	catch(const std::runtime_error& e)
+	{
+		std::cerr << "[ERROR]: " << e.what() << std::endl;
+	}
 	return 0;
 }
