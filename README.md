@@ -1,8 +1,8 @@
-# sbloc
-Stack-Based Language Of Course
+<h1 align="center">SBLOC</h1>
+<h3 align="center">Stack-Based Language Of Course</h3>
 Dynamically typed, because it's easier. (in future may be statically typed)
 
-example:
+# Example:
 ```ruby
 print 11;
 if 21 == 12
@@ -34,5 +34,5 @@ print x;
 * block statement: `{ <...statements> }`
 * set expression: `<name> = <expression>`
 
-# Code
+# Code:
 Pasta
