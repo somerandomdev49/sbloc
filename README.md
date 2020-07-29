@@ -26,6 +26,7 @@ while x > 0
 }
 print x;
 ```
+
 # Syntax:
 * print statement: `print <expression>;`
 * variable declaration: `var <name>;`
