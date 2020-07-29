@@ -7,12 +7,12 @@ Dynamically typed, because it's easier. (in future may be statically typed)
 print 11;
 if 21 == 12
 {
-	print 1;
-	print 2;
+    print 1;
+    print 2;
 }
 else
 {
-	print 0;
+    print 0;
 }
 print 90123;
 
@@ -21,8 +21,8 @@ var x;
 x = 10;
 while x > 0
 {
-	print x;
-	x = x - 1;
+    print x;
+    x = x - 1;
 }
 print x;
 ```
