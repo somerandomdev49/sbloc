@@ -48,7 +48,6 @@ print x;
 | neg   | `push(!pop())` |
 | jpa N | set current instruction index to N |
 | jmp N | if popped value is not 0 then set current instruction index to N |
-```
 
 # Code:
 Pasta
