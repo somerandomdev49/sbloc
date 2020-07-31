@@ -1,21 +1,29 @@
-print 11;
-if 21 == 12
-{
-	print 1;
-	print 2;
+func greet(name) {
+	print 
 }
-else
-{
-	print 0;
-}
-print 90123;
 
 
-var x;
-x = 10;
-while x > 0
+func main()
 {
+	print 11;
+	if 21 == 12
+	{
+		print 1;
+		print 2;
+	}
+	else
+	{
+		print 0;
+	}
+	print 90123;
+
+
+	var x;
+	x = 10;
+	while x > 0
+	{
+		print x;
+		x = x - 1;
+	}
 	print x;
-	x = x - 1;
 }
-print x;

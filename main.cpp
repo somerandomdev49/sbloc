@@ -5,7 +5,16 @@
     // +--------------------------------------------------+ //
    //                                                      //
   // +--------------------------------------------------+ //
- // /          Written in < 24 hours (4d x ~6h)        / //
+ // /          Written in < 30 hours (5d x ~6h)        / //
+// +--------------------------------------------------+ //
+//
+//
+// +--------------------------------------------------+ //
+// |                                                  | //
+// |       I avoided classes because I did not        | //
+// |       want them. Not because I don't             | //
+// |       understand them :)                         | //
+// |                                                  | //
 // +--------------------------------------------------+ //
 #include <vector>
 #include <string>
@@ -79,6 +88,13 @@ enum class object_type
 
 using token = std::pair<token_type, std::string>;
 
+// +--------------------------------------------------+ //
+// |                    TOKENIZER                     | //
+// +--------------------------------------------------+ //
+// |                                                  | //
+// |            Basically a state machine.            | //
+// |                                                  | //
+// +--------------------------------------------------+ //
 auto tokenize(std::istream &input) -> container<token>
 {
 	container<token> tokens;
@@ -123,14 +139,15 @@ auto tokenize(std::istream &input) -> container<token>
 
 				case 'a'...'z':
 				case 'A'...'Z':
-				case '_'      : switch_state(token_type::var, c);   break;
-				case '0'...'9': switch_state(token_type::num, c);   break;
-				case '&'      : switch_state(token_type::and_, c);  break;
-				case '|'      : switch_state(token_type::or_, c);   break;
-				case '>'      : switch_state(token_type::ge, c);    break;
-				case '<'      : switch_state(token_type::le, c);    break;
-				case '-'      : switch_state(token_type::arw, c);   break;
-				case '='      : switch_state(token_type::is_eql, c);break;
+				case '_'      : switch_state(token_type::var, c);          break;
+				case '0'...'9': switch_state(token_type::num, c);          break;
+				case '&'      : switch_state(token_type::and_, c);         break;
+				case '|'      : switch_state(token_type::or_, c);          break;
+				case '>'      : switch_state(token_type::ge, c);           break;
+				case '<'      : switch_state(token_type::le, c);           break;
+				case '-'      : switch_state(token_type::arw, c);          break;
+				case '='      : switch_state(token_type::is_eql, c);       break;
+				case '"'      : switch_state(token_type::str, c); begin++; break;
  
 				case '+': single_state('+', token_type::add); break;
 				case '*': single_state('*', token_type::mul); break; // TODO: add ** (pow), [parser]: right precedence?
@@ -262,8 +279,15 @@ struct tree
 	std::variant<std::vector<tree>, std::string> value;
 };
 
-using instruction = std::pair<instruction_type, std::variant<float, std::tuple<float, float>, std::tuple<float, float, float>, std::monostate>>;
+using instruction = std::pair<instruction_type, std::variant<float, int, std::string, std::tuple<float, float>, std::tuple<float, float, float>, std::monostate>>;
 
+// +--------------------------------------------------+ //
+// |                      PARSER                      | //
+// +--------------------------------------------------+ //
+// |                                                  | //
+// |            A recursive-descent parser.           | //
+// |                                                  | //
+// +--------------------------------------------------+ //
 auto parse(const container<token> &input) -> std::pair<container<int>, container<instruction>>
 {
 	std::map<token_type, std::pair<int, bool>> precedence_table = // precedence, is_right_assoc
@@ -322,8 +346,10 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 		}
 	};
 
-	auto make_instruction     = [&](instruction_type type)          { return instruction(type, std::monostate()); };
-	auto make_instruction_arg = [&](instruction_type type, int arg) { return instruction(type, arg); };
+	auto make_instruction     = [&](instruction_type type)                         { return instruction(type, std::monostate()); };
+	auto make_instruction_arg = [&](instruction_type type, int arg)                { return instruction(type, arg); };
+	auto make_instruction_str = [&](instruction_type type, const std::string &arg) { return instruction(type, arg); };
+	auto make_instruction_num = [&](instruction_type type, float arg)              { return instruction(type, arg); };
 
 	if(input.size() == 0) return std::make_pair<container<int>, container<instruction>>({}, {});
 	
@@ -478,6 +504,11 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 			case expression_type::atom:
 			{
 				debug("Parse atom");
+				if(current.first == token_type::op) {
+					next();
+					parse(expression_type::expr, 0);
+					if(current.first != token_type::cp) throw std::runtime_error("Expected ')' to close an expression.");
+				}
 				if(current.first == token_type::var)
 				{
 					//debug("variable");
@@ -497,7 +528,7 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 				if(current.first == token_type::num)
 				{
 					debug("number");
-					code.push_back(make_instruction_arg(instruction_type::num, std::stof(current.second)));
+					code.push_back(make_instruction_num(instruction_type::num, std::stof(current.second)));
 					next();
 				}
 				if(current.first == token_type::str) { debug("Str not implemented..."); }
@@ -551,6 +582,13 @@ public:
 						   	   break;\
 						   }
 
+// +--------------------------------------------------+ //
+// |                      THE VM                      | //
+// +--------------------------------------------------+ //
+// |                                                  | //
+// |           A stack-based (of course) vm.          | //
+// |                                                  | //
+// +--------------------------------------------------+ //
 auto eval(std::pair<container<int>, container<instruction>> &input) -> container<object>
 {
 	//debug1("eval")
@@ -679,8 +717,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 			{
 				debug3("print")
 				// to_string(pop()).c_str();
-				printf(to_string(pop()).c_str());
-				putc('\n', stdout);
+				puts(to_string(pop()).c_str());
 				break;
 			}
 			default:
@@ -714,6 +751,13 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 	return stack;
 }
 
+// +--------------------------------------------------+ //
+// |                   ENTRY POINT                    | //
+// +--------------------------------------------------+ //
+// |                                                  | //
+// |         int main(int argc, char *argv[])         | //
+// |                                                  | //
+// +--------------------------------------------------+ //
 int main(int argc, char *argv[])
 {
 	if(argc < 2) { std::cout << "No input files" << std::endl; return 1; }
