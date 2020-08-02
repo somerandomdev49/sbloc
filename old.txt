@@ -1,0 +1,117 @@
+const auto switch_state = [&](token_type type, char c = '\0')
+	{
+		if(c) state_buffer.push_back(c);
+		state = type;
+	};
+
+	const auto done_state = [&](token_type rev = token_type::err)
+	{
+		tokens.push_back(std::make_pair(state, state_buffer));
+		state = rev;
+		state_buffer.clear();
+	};
+
+	const auto single_state = [&](char c, token_type type, token_type rev = token_type::err)
+	{
+		state = type;
+		state_buffer.push_back(c);
+		done_state(rev);
+	};
+
+
+	std::istreambuf_iterator<char> begin(input), end;
+	for(bool iter; begin != end; iter ? begin++ : begin)
+	{
+		iter = true;
+		auto c = *begin;
+		if(state == token_type::err)
+			switch(c)
+			{
+				case ' ' :
+				case '\n':
+				case '\t':
+				case '\r':
+				case '\v':
+				case '\f': break;
+
+				case 'a'...'z':
+				case 'A'...'Z':
+				case '_'      : switch_state(token_type::var, c);          break;
+				case '0'...'9': switch_state(token_type::num, c);          break;
+				case '&'      : switch_state(token_type::and_, c);         break;
+				case '|'      : switch_state(token_type::or_, c);          break;
+				case '>'      : switch_state(token_type::ge, c);           break;
+				case '<'      : switch_state(token_type::le, c);           break;
+				case '-'      : switch_state(token_type::arw, c);          break;
+				case '='      : switch_state(token_type::is_eql, c);       break;
+				case '"'      : switch_state(token_type::str, c); begin++; break;
+ 
+				case '+': single_state('+', token_type::add); break;
+				case '*': single_state('*', token_type::mul); break; // TODO: add ** (pow), [parser]: right precedence?
+				case '/': single_state('/', token_type::div); break;
+				case '(': single_state('(', token_type::op);  break;
+				case ')': single_state(')', token_type::cp);  break;
+				case '[': single_state('[', token_type::os);  break;
+				case ']': single_state(']', token_type::cs);  break;
+				case '{': single_state('{', token_type::oc);  break;
+				case '}': single_state('}', token_type::cc);  break;
+				case ';': single_state(';', token_type::semicolon);break;
+				case ':': single_state(':', token_type::colon);  break;
+				case ',': single_state(',', token_type::comma);  break;
+				default: switch_state(token_type::err); done_state(); break;
+			}
+		else if(state == token_type::var)
+			switch(c)
+			{
+				case 'a'...'z': 
+				case 'A'...'Z': 
+				case '0'...'9': 
+				case '_'      : state_buffer.push_back(c); break;
+
+				default: done_state(); iter = false; break;
+			}
+		else if(state == token_type::num)
+			switch(c)
+			{
+				case '0'...'9': 
+				case '_'      : state_buffer.push_back(c); break;
+
+				default: done_state(); iter = false; break;
+			}
+		else if(state == token_type::arw)
+			switch(c)
+			{
+				case '>': state_buffer.push_back(c); done_state(); break;
+				default: switch_state(token_type::sub); done_state(); break;
+			}
+		else if(state == token_type::and_)
+			switch(c)
+			{
+				case '&': state_buffer.push_back(c); done_state(); break;
+				default: switch_state(token_type::bin_and); done_state(); break;
+			}
+		else if(state == token_type::or_)
+			switch(c)
+			{
+				case '|': state_buffer.push_back(c); done_state(); break;
+				default: switch_state(token_type::bin_or); done_state(); break;
+			}
+		else if(state == token_type::le)
+			switch(c)
+			{
+				case '=': state_buffer.push_back(c); done_state(); break;
+				default: switch_state(token_type::lt); done_state(); break;
+			}
+		else if(state == token_type::ge)
+			switch(c)
+			{
+				case '=': state_buffer.push_back(c); done_state(); break;
+				default: switch_state(token_type::gt); done_state(); break;
+			}
+		else if(state == token_type::is_eql)
+			switch(c)
+			{
+				case '=': state_buffer.push_back(c); done_state(); break;
+				default: switch_state(token_type::eql); done_state(); break;
+			}
+	};

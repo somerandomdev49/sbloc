@@ -92,132 +92,70 @@ using token = std::pair<token_type, std::string>;
 // |                    TOKENIZER                     | //
 // +--------------------------------------------------+ //
 // |                                                  | //
-// |            Basically a state machine.            | //
+// |                A simple tokenizer                | //
 // |                                                  | //
 // +--------------------------------------------------+ //
 auto tokenize(std::istream &input) -> container<token>
 {
 	container<token> tokens;
 
+	const auto add_token_char = [&](char c, token_type type)               -> void { tokens.push_back(std::make_pair(type, std::string(1, c))); };
+	const auto add_token      = [&](const std::string &c, token_type type) -> void { tokens.push_back(std::make_pair(type, /* =string */ (c))); };
+
 	token_type state = token_type::err;
-	std::string state_buffer;
-	const auto switch_state = [&](token_type type, char c = '\0')
-	{
-		if(c) state_buffer.push_back(c);
-		state = type;
-	};
+	std::istreambuf_iterator<char> input_iter(input), end;
+	while(input_iter != end) {
+		char c = *input_iter;
 
-	const auto done_state = [&](token_type rev = token_type::err)
-	{
-		tokens.push_back(std::make_pair(state, state_buffer));
-		state = rev;
-		state_buffer.clear();
-	};
+		if(std::isalpha(c)) {
+			std::string buf;
+			while(input_iter != end && std::isalnum(*input_iter)) { buf.push_back(*input_iter++); }
+			add_token(buf, token_type::var);
+			continue;
+		}
+		if(std::isdigit(c)) {
+			std::string buf;
+			while(input_iter != end && std::isdigit(*input_iter)) { buf.push_back(*input_iter++); }
+			if(input_iter != end && *input_iter == '.') {
+				++input_iter;
+				while(input_iter != end && std::isdigit(*input_iter)) { buf.push_back(*input_iter++); }
+			}
+			add_token(buf, token_type::num);
+			continue;
+		}
 
-	const auto single_state = [&](char c, token_type type, token_type rev = token_type::err)
-	{
-		state = type;
-		state_buffer.push_back(c);
-		done_state(rev);
-	};
+		switch(c)
+		{
+			case ' ' :
+			case '\n':
+			case '\t':
+			case '\r':
+			case '\v':
+			case '\f': break;
 
+			case '&'      : if(*std::next(input_iter) == '&') { ++input_iter; add_token("&&", token_type::and_); } else add_token("&", token_type::bin_and); break;
+			case '|'      : if(*std::next(input_iter) == '|') { ++input_iter; add_token("||", token_type::or_ ); } else add_token("|", token_type::bin_or ); break;
+			case '<'      : if(*std::next(input_iter) == '=') { ++input_iter; add_token("<=", token_type::le); } else add_token("<", token_type::lt ); break;
+			case '>'      : if(*std::next(input_iter) == '=') { ++input_iter; add_token(">=", token_type::ge); } else add_token(">", token_type::gt ); break;
+			case '-'      : if(*std::next(input_iter) == '>') { ++input_iter; add_token("->", token_type::arw   ); } else add_token("-", token_type::sub); break;
+			case '='      : if(*std::next(input_iter) == '=') { ++input_iter; add_token("==", token_type::is_eql); } else add_token("|", token_type::eql); break;
 
-	std::istreambuf_iterator<char> begin(input), end;
-	for(bool iter; begin != end; iter ? begin++ : begin)
-	{
-		iter = true;
-		auto c = *begin;
-		if(state == token_type::err)
-			switch(c)
-			{
-				case ' ' :
-				case '\n':
-				case '\t':
-				case '\r':
-				case '\v':
-				case '\f': break;
-
-				case 'a'...'z':
-				case 'A'...'Z':
-				case '_'      : switch_state(token_type::var, c);          break;
-				case '0'...'9': switch_state(token_type::num, c);          break;
-				case '&'      : switch_state(token_type::and_, c);         break;
-				case '|'      : switch_state(token_type::or_, c);          break;
-				case '>'      : switch_state(token_type::ge, c);           break;
-				case '<'      : switch_state(token_type::le, c);           break;
-				case '-'      : switch_state(token_type::arw, c);          break;
-				case '='      : switch_state(token_type::is_eql, c);       break;
-				case '"'      : switch_state(token_type::str, c); begin++; break;
- 
-				case '+': single_state('+', token_type::add); break;
-				case '*': single_state('*', token_type::mul); break; // TODO: add ** (pow), [parser]: right precedence?
-				case '/': single_state('/', token_type::div); break;
-				case '(': single_state('(', token_type::op);  break;
-				case ')': single_state(')', token_type::cp);  break;
-				case '[': single_state('[', token_type::os);  break;
-				case ']': single_state(']', token_type::cs);  break;
-				case '{': single_state('{', token_type::oc);  break;
-				case '}': single_state('}', token_type::cc);  break;
-				case ';': single_state(';', token_type::semicolon);break;
-				case ':': single_state(':', token_type::colon);  break;
-				case ',': single_state(',', token_type::comma);  break;
-				default: switch_state(token_type::err); done_state(); break;
-			}
-		else if(state == token_type::var)
-			switch(c)
-			{
-				case 'a'...'z': 
-				case 'A'...'Z': 
-				case '0'...'9': 
-				case '_'      : state_buffer.push_back(c); break;
-
-				default: done_state(); iter = false; break;
-			}
-		else if(state == token_type::num)
-			switch(c)
-			{
-				case '0'...'9': 
-				case '_'      : state_buffer.push_back(c); break;
-
-				default: done_state(); iter = false; break;
-			}
-		else if(state == token_type::arw)
-			switch(c)
-			{
-				case '>': state_buffer.push_back(c); done_state(); break;
-				default: switch_state(token_type::sub); done_state(); break;
-			}
-		else if(state == token_type::and_)
-			switch(c)
-			{
-				case '&': state_buffer.push_back(c); done_state(); break;
-				default: switch_state(token_type::bin_and); done_state(); break;
-			}
-		else if(state == token_type::or_)
-			switch(c)
-			{
-				case '|': state_buffer.push_back(c); done_state(); break;
-				default: switch_state(token_type::bin_or); done_state(); break;
-			}
-		else if(state == token_type::le)
-			switch(c)
-			{
-				case '=': state_buffer.push_back(c); done_state(); break;
-				default: switch_state(token_type::lt); done_state(); break;
-			}
-		else if(state == token_type::ge)
-			switch(c)
-			{
-				case '=': state_buffer.push_back(c); done_state(); break;
-				default: switch_state(token_type::gt); done_state(); break;
-			}
-		else if(state == token_type::is_eql)
-			switch(c)
-			{
-				case '=': state_buffer.push_back(c); done_state(); break;
-				default: switch_state(token_type::eql); done_state(); break;
-			}
-	};
+			case '+': add_token_char('+', token_type::add); break;
+			case '*': add_token_char('*', token_type::mul); break; // TODO: add ** (pow), [parser]: right precedence?
+			case '/': add_token_char('/', token_type::div); break;
+			case '(': add_token_char('(', token_type::op);  break;
+			case ')': add_token_char(')', token_type::cp);  break;
+			case '[': add_token_char('[', token_type::os);  break;
+			case ']': add_token_char(']', token_type::cs);  break;
+			case '{': add_token_char('{', token_type::oc);  break;
+			case '}': add_token_char('}', token_type::cc);  break;
+			default : add_token_char( c , token_type::err); break;
+			case ';': add_token_char(';', token_type::semicolon);break;
+			case ':': add_token_char(':', token_type::colon);  break;
+			case ',': add_token_char(',', token_type::comma);  break;
+		}
+		++input_iter;
+	}
 	tokens.push_back(token(token_type::eof, ""));
 	return tokens;
 }
@@ -226,7 +164,7 @@ auto tokenize(std::istream &input) -> container<token>
 
 enum class instruction_type
 {
-	get, set, nop,
+	get, set, nop, cll,
 	add, sub, mul, div, and_, xor_, jpa,
 	or_, lt, gt, le, ge, bin_and, bin_or, mod,
 	pop, create, num, debug, jmp, neg, eql, dup
@@ -263,6 +201,7 @@ std::ostream &operator<<(std::ostream &os, const instruction_type &i)
 		case instruction_type::jpa     : s = "jpa    "; break;
 		case instruction_type::eql     : s = "eql    "; break;
 		case instruction_type::dup     : s = "dup    "; break;
+		case instruction_type::cll     : s = "cll    "; break;
 	}
 	os << s;
 	return os;
@@ -270,7 +209,7 @@ std::ostream &operator<<(std::ostream &os, const instruction_type &i)
 
 enum class expression_type
 {
-	atom, expr, stmt
+	atom, expr, stmt, suff
 };
 
 struct tree
@@ -409,13 +348,13 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 					s[current.second] = s.size();
 					next();
 				}
-				else if(current.first == token_type::var && current.second == "print")
-				{
-					//debug1("print");
-					next();
-					parse(expression_type::expr, 0);
-					code.push_back(make_instruction(instruction_type::debug));
-				}
+				// else if(current.first == token_type::var && current.second == "print")
+				// {
+				// 	//debug1("print");
+				// 	next();
+				// 	parse(expression_type::expr, 0);
+				// 	code.push_back(make_instruction(instruction_type::debug));
+				// }
 				else if(current.first == token_type::var && current.second == "if")
 				{
 					debug3("if");
@@ -471,7 +410,8 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 				debug3("parse expr")
 				debug1("Parse expr, current min_prec: " << min_prec);
 				parse(expression_type::atom, -1);
-				if(current.first == token_type::eql && input[index-2].first == token_type::var) { // lookback?
+				if(current.first == token_type::eql && input[index-2].first == token_type::var)
+				{ // lookback?
 					//debug1("set?")
 					next();
 					auto tmp = code[code.size()-1];
@@ -504,10 +444,12 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 			case expression_type::atom:
 			{
 				debug("Parse atom");
-				if(current.first == token_type::op) {
+				if(current.first == token_type::op) 
+				{
 					next();
 					parse(expression_type::expr, 0);
 					if(current.first != token_type::cp) throw std::runtime_error("Expected ')' to close an expression.");
+					next();
 				}
 				if(current.first == token_type::var)
 				{
@@ -531,7 +473,32 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 					code.push_back(make_instruction_num(instruction_type::num, std::stof(current.second)));
 					next();
 				}
-				if(current.first == token_type::str) { debug("Str not implemented..."); }
+				if(current.first == token_type::str) { debug("Str not implemented..."); next(); }
+
+				// parse(expresion_type::suff, 0);
+			}
+			case expression_type::suff:
+			{
+				while(current.first == token_type::op)
+				{
+					next(); 
+					int count = 0;
+					if(current.first == token_type::cp) next();
+					else
+					{
+						++count;
+						parse(expression_type::expr, 0);
+						while(current.first == token_type::comma)
+						{
+							++count;
+							next();
+							parse(expression_type::expr, 0);
+						}
+					}
+					code.push_back(make_instruction_arg(instruction_type::cll, count));
+					if(current.first != token_type::cp) throw std::runtime_error("Expected ')' to close function call argument list");
+					next();
+				}
 				break;
 			}
 			default: debug("no parser for " << (int)type); break;
@@ -540,7 +507,7 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 		group_end();
 		debug("end parse");
 	};
-		while(index < input.size() && input[index].first != token_type::eof)
+	while(index < input.size() && input[index].first != token_type::eof)
 		parse(expression_type::stmt, 0);
 	
 	
@@ -766,22 +733,25 @@ int main(int argc, char *argv[])
 	std::chrono::high_resolution_clock::time_point tokTimeStart = std::chrono::high_resolution_clock::now();
 	auto toks = tokenize(inp);
 	std::chrono::high_resolution_clock::time_point tokTimeEnd = std::chrono::high_resolution_clock::now();
-	// for(const auto &tok : toks)
-	// {
-	// 	std::cout << "Token: " << (int)tok.first << " : " << tok.second << std::endl;
-	// }
+	for(const auto &tok : toks)
+	{
+		std::cout << "Token: " << (int)tok.first << " : " << tok.second << std::endl;
+	}
 	std::chrono::high_resolution_clock::time_point prsTimeStart = std::chrono::high_resolution_clock::now();
 	try {
-		auto code = parse(toks);
 		std::chrono::high_resolution_clock::time_point prsTimeEnd = std::chrono::high_resolution_clock::now();
-		// for(const auto &ins : code.second)
-		// {
-		// 	std::cout << "Instruction: " << ins.first;
-		// 	if(std::holds_alternative<std::monostate>(ins.second)) // int
-		// 		std::cout << " ;" << std::endl;
-		// 	else
-		// 		std::cout << " : " << std::get<0>(ins.second) << std::endl;
-		// }
+		auto code = parse(toks);
+		for(const auto &ins : code.second)
+		{
+			std::cout << "Instruction: " << ins.first;
+			if(std::holds_alternative<std::monostate>(ins.second)) // int
+				std::cout << " ;" << std::endl;
+			else if(std::holds_alternative<int>(ins.second))
+				std::cout << " : " << std::get<int>(ins.second) << std::endl;
+			else if(std::holds_alternative<float>(ins.second))
+				std::cout << " : " << std::get<float>(ins.second) << std::endl;
+		}
+		std::cout << "End" << std::endl;
 		std::chrono::high_resolution_clock::time_point runTimeStart = std::chrono::high_resolution_clock::now();
 		auto s = eval(code);
 		std::chrono::high_resolution_clock::time_point runTimeEnd = std::chrono::high_resolution_clock::now();
