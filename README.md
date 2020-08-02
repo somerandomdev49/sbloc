@@ -2,6 +2,8 @@
 <h3 align="center">Stack-Based Language Of Course</h3>
 Dynamically typed, because it's easier. (in future may be statically typed)
 
+I making this language in preparation for the [Bear](https://github.com/bear-lang/Bear) language.
+
 # Example:
 ```ruby
 print 11;
