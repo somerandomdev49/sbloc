@@ -1,5 +1,6 @@
 var this_will_not_do_anything_but_arguments_are_parsed;
 print(11, this_will_not_do_anything_but_arguments_are_parsed);
+
 if 21 == 12
 {
     print(1);
@@ -14,6 +15,8 @@ print(90123);
 
 var x;
 x = 10;
+print(90124);
+print(x);
 while x > 0
 {
     print(x);

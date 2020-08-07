@@ -36,7 +36,7 @@
 #define group_start() //GLOBAL_GROUP_INDENT++
 #define group_end() //GLOBAL_GROUP_INDENT--
 #define __debug_ALWAYS(x) std::cout << std::string("|   ") * GLOBAL_GROUP_INDENT << x << std::endl;
-#define __debug(x) __debug_ALWAYS(x)
+#define __debug(x) // __debug_ALWAYS(x)
 #define debug(x)  __debug(x)
 #define debug1(x) __debug(x)
 #define debug2(x) __debug(x)
@@ -317,6 +317,7 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 	next();
 
 	
+	
 	std::function<void(expression_type type, int min_prec)> parse; // will c++23 allow recursive lambdas? please...
 	parse = [&](expression_type type, int min_prec) -> void
 	{
@@ -422,12 +423,12 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 				parse(expression_type::atom, -1);
 				if(current.first == token_type::eql && input[index-2].first == token_type::var)
 				{ // lookback?
-					debug1("set")
+					std::cout << "set" << std::endl;
 					next();
 					auto tmp = code[code.size()-1];
 					code.erase(code.end()-1);
 					parse(expression_type::expr, 0);
-					code.push_back(make_instruction_arg(instruction_type::set, std::get<float>(tmp.second)));
+					code.push_back(make_instruction_arg(instruction_type::set, std::get<int>(tmp.second)));
 					break;
 				}
 				//debug1("...");
@@ -515,13 +516,13 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 		}
 		debug("end parse2");
 		group_end();
-		debug("end parse");
+		std::cout << ("end parse") << std::endl;
 	};
 	while(index < input.size() && input[index].first != token_type::eof)
 		parse(expression_type::stmt, 0);
 	
 	
-	debug1("End");
+	std::cout << ("End") << std::endl;
 	for(const auto &x : code)
 	{
 		debug((int)x.first << " : ");
@@ -590,7 +591,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 	const auto assert_type = [&](const object &o, object_type type) -> bool
 	{
 		if(o.type != type)
-			throw std::runtime_error("Wrong type, expected " + std::to_string((int)type) + std::to_string((int)o.type));
+			throw std::runtime_error("Wrong type, expected " + std::to_string((int)type) + ", but got " + std::to_string((int)o.type));
 		return true;
 	};
 	
@@ -610,7 +611,9 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 				for (auto &it = ++begin; it != container.end(); ++it) s += ", " + to_string(*it);
 				return s;
 			}
-			default: throw std::runtime_error("Not implemented to_string for type" + std::to_string((int)o.type));
+			case object_type::fnc: return "[Function]";
+			case object_type::nat: return "[Native]";
+			default: throw std::runtime_error("Not implemented to_string for type " + std::to_string((int)o.type));
 		}
 	};
 
@@ -634,6 +637,8 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 		return tmp;
 	};
 
+
+	int debug_skip_index = -1;
 	//debug1("run")
 	std::function<void(container<instruction>&)> evalLoop;
 	evalLoop = [&](container<instruction> &code) -> void
@@ -725,6 +730,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 					std::vector<object> args;
 					args.reserve(std::get<int>(ins.second));
 					for(int i = 0; i < std::get<int>(ins.second); i++) args.push_back(pop());
+					std::reverse(args.begin(), args.end());
 					auto f = pop();
 					if(f.type != object_type::fnc && f.type != object_type::nat)
 						throw std::runtime_error("Object " + to_string(f) + " is not callable.");
@@ -745,8 +751,9 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 					throw std::runtime_error("Unknown instruction: " + std::to_string((int)ins.first));
 				}
 			}
-			if(debug_mode)
+			if(debug_mode && (debug_skip_index == -1 || debug_skip_index == index))
 			{
+				debug_skip_index = -1;
 				char c;
 				std::cin >> c;
 				if(c == 's')
@@ -758,6 +765,10 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 					}
 					std::cout << "[============]" << std::endl;
 					std::cin >> c;
+				}
+				if(c == 'k')
+				{
+					std::cin >> debug_skip_index;
 				}
 				if(c == 'v')
 				{
