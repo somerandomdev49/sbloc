@@ -1,8 +1,5 @@
-ccmplx
-ccmplx.cpp
-main
-runner
-runner.cpp
-runscript
+bin
+bin/*
 .vscode
 .vscode/*
+old.txt

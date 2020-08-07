@@ -1,2 +1,2 @@
-g++ main.cpp -o main -std=c++17
-./main example.sbloc
+g++ main.cpp -o bin/main -std=c++17
+bin/main example.sbloc $1

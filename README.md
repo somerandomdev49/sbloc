@@ -6,27 +6,28 @@ I making this language in preparation for the [Bear](https://github.com/bear-lan
 
 # Example:
 ```ruby
-print 11;
+var this_will_not_do_anything_but_arguments_are_parsed;
+print(11, this_will_not_do_anything_but_arguments_are_parsed);
 if 21 == 12
 {
-    print 1;
-    print 2;
+    print(1);
+    print(2);
 }
 else
 {
-    print 0;
+    print(0);
 }
-print 90123;
+print(90123);
 
 
 var x;
 x = 10;
 while x > 0
 {
-    print x;
+    print(x);
     x = x - 1;
 }
-print x;
+print(x);
 ```
 
 # Syntax:

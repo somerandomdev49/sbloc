@@ -18,6 +18,7 @@
 // +--------------------------------------------------+ //
 #include <vector>
 #include <string>
+#include <cstring>
 #include <iostream>
 #include <utility>
 #include <tuple>
@@ -33,16 +34,22 @@
 #include <numeric>
 #include <chrono>
 #define group_start() //GLOBAL_GROUP_INDENT++
-#define group_end()// GLOBAL_GROUP_INDENT--
+#define group_end() //GLOBAL_GROUP_INDENT--
 #define __debug_ALWAYS(x) std::cout << std::string("|   ") * GLOBAL_GROUP_INDENT << x << std::endl;
-#define __debug(x) // __debug_ALWAYS(x)
-#define debug(x) // __debug(x)
+#define __debug(x) __debug_ALWAYS(x)
+#define debug(x)  __debug(x)
 #define debug1(x) __debug(x)
 #define debug2(x) __debug(x)
-#define debug3(x) //__debug(x)
-#define debug4(x) //__debug(x)
+#define debug3(x) __debug(x)
+#define debug4(x) __debug(x)
+
+// I use container for an internal ontainer type.
+// But in object for example, I use a vector for
+// an array because I want to specifically say that
+// the array type is an std::vector<object>
 template<typename element>
 using container = std::vector<element>;
+
 int GLOBAL_GROUP_INDENT = 0;
 bool debug_mode = false;
 
@@ -52,7 +59,7 @@ std::basic_string<Char, Traits, Allocator> operator *
 (const std::basic_string<Char, Traits, Allocator> s, size_t n)
 {
 	if(n == 1) return s;
-	if(n == 0) return "";
+	if(n <= 0) return "";
    	std::basic_string<Char, Traits, Allocator> tmp = s;
    	for (size_t i = 0; i < n; ++i)
    	{
@@ -83,7 +90,8 @@ enum class token_type
 
 enum class object_type
 {
-	num, str, arr, nil
+	num, str, arr, nil,
+	map, fnc, nat, err,
 };
 
 using token = std::pair<token_type, std::string>;
@@ -107,9 +115,9 @@ auto tokenize(std::istream &input) -> container<token>
 	while(input_iter != end) {
 		char c = *input_iter;
 
-		if(std::isalpha(c)) {
+		if(std::isalpha(c) || *input_iter == '_') {
 			std::string buf;
-			while(input_iter != end && std::isalnum(*input_iter)) { buf.push_back(*input_iter++); }
+			while(input_iter != end && (std::isalnum(*input_iter) || *input_iter == '_')) { buf.push_back(*input_iter++); }
 			add_token(buf, token_type::var);
 			continue;
 		}
@@ -295,6 +303,7 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 	container<std::map<std::string, int>> scopes;
 	container<instruction> code;
 	scopes.push_back(std::map<std::string, int>()); // initial scope;
+	scopes[0]["print"] = 0;
 
 	int index = 0;
 	token current;
@@ -348,13 +357,13 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 					s[current.second] = s.size();
 					next();
 				}
-				// else if(current.first == token_type::var && current.second == "print")
-				// {
-				// 	//debug1("print");
-				// 	next();
-				// 	parse(expression_type::expr, 0);
-				// 	code.push_back(make_instruction(instruction_type::debug));
-				// }
+				else if(current.first == token_type::var && current.second == "debug")
+				{
+					//debug1("print");
+					next();
+					parse(expression_type::expr, 0);
+					code.push_back(make_instruction(instruction_type::debug));
+				}
 				else if(current.first == token_type::var && current.second == "if")
 				{
 					debug3("if");
@@ -401,7 +410,8 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 					parse(expression_type::expr, 0);
 				}
 				debug3("end");
-				if(current.first != token_type::semicolon) throw std::runtime_error("Expected a semicolon, but got " + input[index-2].second + current.second);
+				if(current.first != token_type::semicolon)
+					throw std::runtime_error("Expected a semicolon, but got " + current.second);
 				next();
 				break;
 			}
@@ -412,7 +422,7 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 				parse(expression_type::atom, -1);
 				if(current.first == token_type::eql && input[index-2].first == token_type::var)
 				{ // lookback?
-					//debug1("set?")
+					debug1("set")
 					next();
 					auto tmp = code[code.size()-1];
 					code.erase(code.end()-1);
@@ -511,7 +521,7 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 		parse(expression_type::stmt, 0);
 	
 	
-	//debug1("End");
+	debug1("End");
 	for(const auto &x : code)
 	{
 		debug((int)x.first << " : ");
@@ -523,21 +533,34 @@ auto parse(const container<token> &input) -> std::pair<container<int>, container
 }
 
 
-
-
+class object;
+using function_type = std::function<object(const container<object>&)>;
 class object
 {
 public:
 	object_type type;
 	bool marked;
-	std::variant<float, std::string, std::vector<object>, std::monostate> value;
+	std::variant<
+		float,
+		std::string,
+		std::vector<object>,
+		std::map<object, object>,
+		container<instruction>,
+		std::function<object(const container<object>&)>,
+		std::monostate
+	> value;
 
-	object(float n) : type(object_type::num), marked(false), value(n) {}
-	object(std::string s) : type(object_type::str), marked(false), value(s) {}
-	object(std::vector<object> a) : type(object_type::arr), marked(false), value(a) {}
-	object() : type(object_type::nil), marked(false), value(std::monostate()) {}
-	object(std::monostate n) : type(object_type::nil), marked(false), value(n) {}
+	object(float n)                           : type(object_type::num), value(n) {}
+	object(const std::string &s)              : type(object_type::str), value(s) {}
+	object(const std::vector<object> &a)      : type(object_type::arr), value(a) {}
+	object(const container<instruction> &a)   : type(object_type::fnc), value(a) {}
+	object(const function_type &a)            : type(object_type::nat), value(a) {}
+	object(const std::map<object, object> &a) : type(object_type::arr), value(a) {}
+	object()                                  : type(object_type::err), value(std::monostate()) {}
+	object(std::monostate n)                  : type(object_type::nil), value(n) {}
 };
+
+#define MAKE_NIL object(std::monostate())
 
 #define op(name, type, op) case instruction_type::name: \
 						   {\
@@ -593,7 +616,13 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 
 	container<std::map<int, object>> scopes;
 	scopes.push_back(std::map<int, object>());
-	for(const auto &x : input.first) { scopes[0][x] = object(); if(debug_mode) debug3("var: " << x); }
+
+	for(const auto &x : input.first) { scopes[0].emplace(x, std::monostate()); if(debug_mode) debug1("var: " << x); }
+	scopes[0][0] = object([&](const std::vector<object> args) -> object
+	{
+		puts(to_string(args[0]).c_str());
+		return MAKE_NIL;
+	});
 	debug4(scopes.size())
 
 	container<object> stack;
@@ -606,115 +635,141 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 	};
 
 	//debug1("run")
-	int index = 0;
-	while(index < input.second.size())
+	std::function<void(container<instruction>&)> evalLoop;
+	evalLoop = [&](container<instruction> &code) -> void
 	{
-		const auto &ins = input.second[index];
-		if(debug_mode) std::cout << "[running]: " << ins.first << std::endl;
-		switch(ins.first)
+		int index = 0;
+		while(index < code.size())
 		{
-			op(add  , num, +  );
-			op(sub  , num, -  );
-			op(mul  , num, *  );
-			op(div  , num, /  );
-			op(eql  , num, == );
-			op(gt   , num, >  );
-			op(lt   , num, <  );
-			op(ge   , num, >= );
-			op(le   , num, <= );
-			op(or_  , num, || );
-			op(and_ , num, && );
-			case instruction_type::neg: 
+			const auto &ins = code[index];
+			if(debug_mode) std::cout << "[running]: " << ins.first << std::endl;
+			switch(ins.first)
 			{
-				auto x = pop();
-				assert_type(x, object_type::num);
-				stack.push_back(object(!std::get<0>(x.value)));
-				break;
-			}
-			case instruction_type::jmp: 
-			{
-				if(std::get<0>(pop().value))
+				op(add  , num, +  );
+				op(sub  , num, -  );
+				op(mul  , num, *  );
+				op(div  , num, /  );
+				op(eql  , num, == );
+				op(gt   , num, >  );
+				op(lt   , num, <  );
+				op(ge   , num, >= );
+				op(le   , num, <= );
+				op(or_  , num, || );
+				op(and_ , num, && );
+				case instruction_type::neg: 
 				{
-					index = (int)std::get<float>(ins.second);
+					auto x = pop();
+					assert_type(x, object_type::num);
+					stack.push_back(object(!std::get<0>(x.value)));
+					break;
+				}
+				case instruction_type::jmp: 
+				{
+					if(std::get<0>(pop().value))
+					{
+						index = std::get<int>(ins.second);
+						goto nextLoop;
+					}
+					break;
+				}
+				case instruction_type::jpa: 
+				{
+					index = std::get<int>(ins.second);
 					goto nextLoop;
 				}
-				break;
-			}
-			case instruction_type::jpa: 
-			{
-				index = (int)std::get<float>(ins.second);
-				goto nextLoop;
-			}
-			case instruction_type::dup:
-			{
-				stack.push_back(stack[stack.size()-1]);
-				break;
-			}
-			case instruction_type::num:
-			{
-				stack.push_back(object(std::get<float>(ins.second)));
-				break;
-			}
-			case instruction_type::get:
-			{
-				debug1("get " << (int)std::get<float>(ins.second));
-				if(scopes.size() == 0) throw std::runtime_error("scope stack collapsed.");
-				int i = scopes.size() - 1;
-				for(; i >= 0; i--)
-					if(scopes[i].find((int)std::get<float>(ins.second)) != scopes[i].end())
-						break;
-				if(i == -1) throw std::runtime_error("no such variable");
-				auto &s = scopes[i];
-				stack.push_back(s[(int)std::get<float>(ins.second)]);
-				break;
-			}
-			case instruction_type::set:
-			{
-				debug1("set " << (int)std::get<float>(ins.second));
-				int i = scopes.size() - 1;
-				for(; i >= 0; i--)
-					if(scopes[i].find((int)std::get<float>(ins.second)) != scopes[i].end())
-						break;
-				if(i == -1) throw std::runtime_error("no such variable");
-				auto &s = scopes.at(i);
-				s[(int)std::get<float>(ins.second)] = pop();
-				break;
-			}
-			case instruction_type::debug:
-			{
-				debug3("print")
-				// to_string(pop()).c_str();
-				puts(to_string(pop()).c_str());
-				break;
-			}
-			default:
-			{
-				throw std::runtime_error("Unknown instruction: " + std::to_string((int)ins.first));
-			}
-		}
-		if(debug_mode)
-		{
-			char c;
-			std::cin >> c;
-			if(c == 's')
-			{
-				std::cout << "[============]" << std::endl;
-				for(const auto &x : stack)
+				case instruction_type::dup:
 				{
-					std::cout << to_string(x) << std::endl;
+					stack.push_back(stack[stack.size()-1]);
+					break;
 				}
-				std::cout << "[============]" << std::endl;
-				std::cin >> c;
+				case instruction_type::num:
+				{
+					stack.push_back(object(std::get<float>(ins.second)));
+					break;
+				}
+				case instruction_type::get:
+				{
+					debug1("get " << std::get<int>(ins.second));
+					if(scopes.size() == 0) throw std::runtime_error("scope stack collapsed.");
+					int i = scopes.size() - 1;
+					for(; i >= 0; i--)
+						if(scopes[i].find(std::get<int>(ins.second)) != scopes[i].end())
+							break;
+					if(i == -1) throw std::runtime_error("no such variable");
+					auto &s = scopes[i];
+					stack.push_back(s.at(std::get<int>(ins.second)));
+					break;
+				}
+				case instruction_type::set:
+				{
+					debug1("set " << std::get<int>(ins.second));
+					int i = scopes.size() - 1;
+					for(; i >= 0; i--)
+						if(scopes[i].find(std::get<int>(ins.second)) != scopes[i].end())
+							break;
+					if(i == -1) throw std::runtime_error("no such variable");
+					auto &s = scopes.at(i);
+					s.insert({std::get<int>(ins.second), pop()});
+					break;
+				}
+				case instruction_type::debug:
+				{
+					debug3("print")
+					// to_string(pop()).c_str();
+					puts(to_string(pop()).c_str());
+					break;
+				}
+				case instruction_type::cll:
+				{
+					debug3("cll");
+					std::vector<object> args;
+					args.reserve(std::get<int>(ins.second));
+					for(int i = 0; i < std::get<int>(ins.second); i++) args.push_back(pop());
+					auto f = pop();
+					if(f.type != object_type::fnc && f.type != object_type::nat)
+						throw std::runtime_error("Object " + to_string(f) + " is not callable.");
+					if(f.type == object_type::fnc)
+					{
+						scopes.push_back(std::map<int, object>());
+						evalLoop(std::get<container<instruction>>(f.value));
+						scopes.pop_back();
+					}
+					else
+					{
+						stack.push_back(std::get<function_type>(f.value)(args));
+					}
+					break;
+				}
+				default:
+				{
+					throw std::runtime_error("Unknown instruction: " + std::to_string((int)ins.first));
+				}
 			}
-			if(c == 'v')
+			if(debug_mode)
 			{
-				for(const auto &x : scopes[0]) { debug3("var: " << x.first); }
+				char c;
 				std::cin >> c;
+				if(c == 's')
+				{
+					std::cout << "[============]" << std::endl;
+					for(const auto &x : stack)
+					{
+						std::cout << to_string(x) << std::endl;
+					}
+					std::cout << "[============]" << std::endl;
+					std::cin >> c;
+				}
+				if(c == 'v')
+				{
+					for(const auto &x : scopes[0]) { debug3("var: " << x.first); }
+					std::cin >> c;
+				}
 			}
+			index++;
+			nextLoop:;
 		}
-		index++;
-		nextLoop:;
-	}
+	};
+	evalLoop(input.second);
 	return stack;
 }
 
@@ -728,7 +783,7 @@ auto eval(std::pair<container<int>, container<instruction>> &input) -> container
 int main(int argc, char *argv[])
 {
 	if(argc < 2) { std::cout << "No input files" << std::endl; return 1; }
-	debug_mode = false; // std::find(argv, argv + argc, "-d");
+	debug_mode = std::find_if(argv, argv + argc, [](char*s){return std::strcmp(s, "-d") == 0;}) != argv + argc;
 	std::ifstream inp(argv[1]);
 	std::chrono::high_resolution_clock::time_point tokTimeStart = std::chrono::high_resolution_clock::now();
 	auto toks = tokenize(inp);
@@ -741,9 +796,10 @@ int main(int argc, char *argv[])
 	try {
 		std::chrono::high_resolution_clock::time_point prsTimeEnd = std::chrono::high_resolution_clock::now();
 		auto code = parse(toks);
+		std::cout << "End parse" << std::endl;
 		for(const auto &ins : code.second)
 		{
-			std::cout << "Instruction: " << ins.first;
+			std::cout << "Instruction: " << ins.first << std::flush;
 			if(std::holds_alternative<std::monostate>(ins.second)) // int
 				std::cout << " ;" << std::endl;
 			else if(std::holds_alternative<int>(ins.second))
@@ -771,6 +827,10 @@ int main(int argc, char *argv[])
 	catch(const std::runtime_error& e)
 	{
 		std::cerr << "[ERROR]: " << e.what() << std::endl;
+	}
+	catch(const std::exception& e)
+	{
+		std::cerr << "[INTERNAL]: " << typeid(e).name() << " - " << e.what() << std::endl;
 	}
 	return 0;
 }
