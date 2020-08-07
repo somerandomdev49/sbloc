@@ -31,12 +31,14 @@ print(x);
 ```
 
 # Syntax:
-* print statement: `print <expression>;`
-* variable declaration: `var <name>;`
-* if statement: `if <expression> <statement> [ else <statement> ]`
-* while statement: `while <expression> <statement>`
-* block statement: `{ <...statements> }`
-* set expression: `<name> = <expression>`
+* print statement: `'print' expression ';'`
+* variable declaration: `'var' name ';'`
+* if statement: `'if' expression statement [ 'else' statement ]`
+* while statement: `'while' expression statement`
+* block statement: `'{' statement... '}'`
+* set expression: `name '=' expression`
+* expression: `expression postfix`
+* postfix: `[ '(' expression... ')' ]...`
 
 # Bytecode:
 | Name | Description |
